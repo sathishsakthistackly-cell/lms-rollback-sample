@@ -8,8 +8,8 @@ pipeline {
     environment {
         IMAGE_NAME = 'lms-rollback-sample'
         CONTAINER_NAME = 'lms-rollback-sample'
-        HOST_PORT = '8080'
-        HEALTH_URL = 'http://127.0.0.1:8080/health'
+        HOST_PORT = '8081'
+        HEALTH_URL = 'http://127.0.0.1:8081/health'
     }
 
     stages {
