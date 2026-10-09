@@ -1,8 +1,18 @@
+
 pipeline {
     agent any
+
     options {
         timestamps()
         disableConcurrentBuilds()
+    }
+
+    parameters {
+        booleanParam(
+            name: 'SIMULATE_FAILURE',
+            defaultValue: false,
+            description: 'Enable this to test automatic rollback'
+        )
     }
 
     environment {
@@ -28,7 +38,10 @@ pipeline {
         stage('Save Previous Version') {
             steps {
                 sh '''
-                    PREVIOUS_IMAGE=$(docker inspect -f '{{.Config.Image}}' ${CONTAINER_NAME} 2>/dev/null || true)
+                    PREVIOUS_IMAGE=$(docker inspect \
+                      -f '{{.Config.Image}}' \
+                      ${CONTAINER_NAME} 2>/dev/null || true)
+
                     echo "$PREVIOUS_IMAGE" > .previous-image
                     echo "Previous image: ${PREVIOUS_IMAGE:-none}"
                 '''
@@ -38,19 +51,26 @@ pipeline {
         stage('Deploy and Health Check') {
             steps {
                 sh '''
-                    docker rm -f ${CONTAINER_NAME} >/dev/null 2>&1 || true
-                    docker run -d --name ${CONTAINER_NAME} \
+                    docker rm -f ${CONTAINER_NAME} \
+                      >/dev/null 2>&1 || true
+
+                    docker run -d \
+                      --name ${CONTAINER_NAME} \
                       --restart unless-stopped \
                       -e APP_VERSION=${BUILD_NUMBER} \
                       -e ENVIRONMENT=jenkins \
+                      -e SIMULATE_FAILURE=${SIMULATE_FAILURE} \
                       -p ${HOST_PORT}:5000 \
                       ${IMAGE_NAME}:${BUILD_NUMBER}
                 '''
 
                 sh '''
                     PREVIOUS_IMAGE=$(cat .previous-image)
+
                     sh scripts/deploy-rollback.sh \
-                      ${CONTAINER_NAME} ${HEALTH_URL} "$PREVIOUS_IMAGE"
+                      ${CONTAINER_NAME} \
+                      ${HEALTH_URL} \
+                      "$PREVIOUS_IMAGE"
                 '''
             }
         }
@@ -60,9 +80,11 @@ pipeline {
         success {
             echo 'Deployment completed and health check passed.'
         }
+
         failure {
-            echo 'Deployment failed; inspect logs and rollback output.'
+            echo 'Deployment failed. Check whether rollback succeeded.'
         }
+
         always {
             sh 'docker image prune -f || true'
         }
